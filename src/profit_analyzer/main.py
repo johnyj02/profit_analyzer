@@ -20,7 +20,7 @@ def build_equity_curve(trades: pd.DataFrame, price_provider) -> pd.Series:
 
     symbols = sorted(t['symbol'].unique())
     start = str(min(t['date']))
-    end = str(max(t['date']))
+    end =  str(pd.Timestamp.today().normalize().date())
 
     frames = []
     for sym in symbols:
@@ -61,6 +61,8 @@ def build_equity_curve(trades: pd.DataFrame, price_provider) -> pd.Series:
 
     equity = (pos * price_pivot).sum(axis=1)
     equity = pd.Series(equity.values, index=pd.to_datetime(list(equity.index)))
+    log_dataframe_details(equity)
+
     return equity
 
 def main():
