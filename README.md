@@ -213,4 +213,8 @@ logging:
 - Portfolio allocation heatmaps
 - Interactive Plotly dashboards
 
+## Test status
+![Tests](https://github.com/YOUR_USER/profit_analyzer_package/actions/workflows/tests.yml/badge.svg)
+
+
 Author: Joseph Sankoorikal Johny
