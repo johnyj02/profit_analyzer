@@ -79,27 +79,37 @@ def main():
                            max_bytes=logcfg.get('max_bytes', 1048576),
                            backup_count=logcfg.get('backup_count', 5))
     logger.info("Starting Profit Analyzer")
-    instances = initialize_from_config(config, package_root='profit_analyzer')
-    class_map = {inst.__class__.__name__: inst for inst in instances}
+    # instances = initialize_from_config(config, package_root='profit_analyzer')
+    loaded_config = initialize_from_config(config, package_root='profit_analyzer')
 
-    file_loader = class_map['FileLoader']
-    webull_parser = class_map['WebullParser']
-    portfolio_builder = class_map['PortfolioBuilder']
-    profit_calc = class_map['ProfitCalculator']
-    price_provider = class_map.get('YFinancePriceProvider', YFinancePriceProvider())
-    bench = class_map['BenchmarkComparator']
-    plotter = class_map['Plotter']
+    # class_map = {inst.__class__.__name__: inst for inst in instances}
 
-    df_raw = file_loader.load_files()
-    logger.info(f"Loaded {len(df_raw)} rows from CSVs")
+    # file_loader = class_map['FileLoader']
+    # webull_parser = class_map['WebullParser']
+    portfolio_builder = loaded_config['folio_builder']
+    profit_calc = loaded_config['profic_calculator']
+    # price_provider = loaded_config['folio_builder']
+    # bench = class_map['BenchmarkComparator']
+    plotter = loaded_config['plotter']
 
-    trades = webull_parser.parse(df_raw)
+    trades_raw_df = loaded_config['trades_data']['loader'].load_files()
+    logger.info(f"Loaded {len(trades_raw_df)} rows from CSVs")
+
+    trades = loaded_config['trades_data']['data_parser'].parse(trades_raw_df)
     logger.info(f"Parsed {len(trades)} filled trades across {trades['symbol'].nunique()} symbols")    
+    if loaded_config.get("transfers_data"):
+        transfers_raw_df = loaded_config['transfers_data']['loader'].load_files()
+        transfers_cf = loaded_config['transfers_data']['data_parser'].parse(transfers_raw_df)
+        if transfers_cf is not None and not transfers_cf.empty:
+            logger.info(f"Loaded {len(transfers_raw_df)} rows from transfer CSVs, "
+                        f"built {len(transfers_cf)} external cash-flow dates for MWR.")
+        else:
+            logger.info("No external transfers found or parsed; will fall back to trade-based flows.")
 
     positions = portfolio_builder.build_positions(trades)
     cash_flows = portfolio_builder.cash_flows(trades).set_index('date')['cash_flow']
     log_dataframe_details(trades)
-    equity = build_equity_curve(trades, price_provider)
+    equity = build_equity_curve(trades, loaded_config['trades_data']['price_provider'])
 
 
     if trades.empty:
@@ -118,8 +128,8 @@ def main():
         logger.info(f"Time-weighted return: {twr:.2f}%")
 
     # Benchmark
-    bcfg = config.get('benchmark', {})
-    bench_df = bench.compare(price_provider, bcfg.get('start_date','2020-01-01'), bcfg.get('end_date','2030-12-31'))
+    bcfg = loaded_config['benchmark']
+    bench_df = bcfg['comparator'].compare(loaded_config['benchmark']['price_provider'], bcfg.get('start_date','2020-01-01'), bcfg.get('end_date','2030-12-31'))
 
     # Plots
     plotter.plot_equity_curve(equity, label="Portfolio")

@@ -1,49 +1,45 @@
-files:
-  folder_path: "./data"         # folder containing your Webull csvs
-  include_patterns: ["Webull_Orders_Records*.csv"]
-
-benchmark:
-  ticker: "VTI"
-  price_provider: "YFinancePriceProvider"
-  start_date: "2023-01-01"
-  end_date: "2030-12-31"
 
 returns:
   # one of: "money_weighted", "time_weighted"
   method: "money_weighted"
 
-plot:
-  output_dir: "./plots"
+trades_data:
+  loader:
+    class: FileLoader
+    args:
+      folder_path: "./data/webull/*/"
+      include_patterns: ["Webull_Orders_Records*.csv","transfers*.csv"]
+  data_parser:
+    class: WebullParser
+  price_provider:
+    class: YFinancePriceProvider
+      
+benchmark:
+  ticker: "VTI"
+  price_provider: 
+    class: YFinancePriceProvider
+  start_date: "2023-01-01"
+  end_date: "2025-12-31"
+  comparator:
+    class: BenchmarkComparator
+    args:
+      ticker: "${benchmark.ticker}"
+      price_provider: "$benchmark.price_provider"
+
 
 logging:
   level: "INFO"
   logfile: "./logs/profit_analyzer.log"
   backup_count: 5
 
-modules:
-  - class: FileLoader
-    args:
-      folder_path: "./data/webull/*/"
-      include_patterns: ["Webull_Orders_Records*.csv","transfers*.csv"]
+plotter:
+  class: Plotter
+  args:
+    output_dir: "./plots"
 
-  - class: WebullParser
-    args: {}
-
-  - class: PortfolioBuilder
-    args: {}
-
-  - class: ProfitCalculator
-    args:
-      method: "${returns.method}"
-
-  - class: YFinancePriceProvider
-    args: {}
-
-  - class: BenchmarkComparator
-    args:
-      ticker: "${benchmark.ticker}"
-      price_provider: "${benchmark.price_provider}"
-
-  - class: Plotter
-    args:
-      output_dir: "${plot.output_dir}"
+folio_builder:
+  class: PortfolioBuilder
+profic_calculator:
+  class: ProfitCalculator
+  args:
+    method: "${returns.method}"

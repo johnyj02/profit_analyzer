@@ -69,54 +69,49 @@ profit_analyzer/
 ## ⚙️ Configuration (`config.yaml`)
 
 ```yaml
-files:
-  folder_path: "./data"
-  include_patterns: ["Webull_Orders_Records*.csv"]
+folio_builder:
+  class: PortfolioBuilder
+profic_calculator:
+  class: ProfitCalculator
+  args:
+    method: "${returns.method}"
+
+returns:
+  # one of: "money_weighted", "time_weighted"
+  method: "money_weighted"
+
+trades_data:
+  loader:
+    class: FileLoader
+    args:
+      folder_path: "./data/webull/*/"
+      include_patterns: ["Webull_Orders_Records*.csv","transfers*.csv"]
+  data_parser:
+    class: WebullParser
+  price_provider:
+    class: YFinancePriceProvider
 
 benchmark:
   ticker: "VTI"
+  price_provider: 
+    class: YFinancePriceProvider
   start_date: "2023-01-01"
-  end_date: "2030-12-31"
-
-returns:
-  method: "time_weighted"     # or "money_weighted"
-
-plot:
-  output_dir: "./plots"
+  end_date: "2025-12-31"
+  comparator:
+    class: BenchmarkComparator
+    args:
+      ticker: "${benchmark.ticker}"
+      price_provider: "$benchmark.price_provider"
 
 logging:
   level: "INFO"
   logfile: "./logs/profit_analyzer.log"
-  max_bytes: 1048576
-  backup_count: 5
+  backup_count: 2
 
-modules:
-  - class: FileLoader
-    args:
-      folder_path: "${files.folder_path}"
-      include_patterns: "${files.include_patterns}"
-
-  - class: WebullParser
-    args: {}
-
-  - class: PortfolioBuilder
-    args: {}
-
-  - class: ProfitCalculator
-    args:
-      method: "${returns.method}"
-
-  - class: YFinancePriceProvider
-    args: {}
-
-  - class: BenchmarkComparator
-    args:
-      ticker: "${benchmark.ticker}"
-      price_provider: "YFinancePriceProvider"
-
-  - class: Plotter
-    args:
-      output_dir: "${plot.output_dir}"
+plotter:
+  class: Plotter
+  args:
+    output_dir: "./plots"
 
 ```
 

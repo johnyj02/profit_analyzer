@@ -37,15 +37,67 @@ def resolve_interpolations(args: dict, config: dict) -> dict:
     from ast import literal_eval
     return literal_eval(out)
 
-def initialize_from_config(config: dict, package_root: str = "profit_analyzer") -> Any:
+# def initialize_from_config(config: dict, package_root: str = "profit_analyzer") -> Any:
+#     class_map = discover_classes(package_root)
+#     instances = []
+#     for module in config.get("modules", []):
+#         class_name = module["class"]
+#         args = module.get("args", {})
+#         args = resolve_interpolations(args, config)
+#         if class_name not in class_map:
+#             raise ImportError(f"Class {class_name} not found in discovered modules under {package_root}")
+#         cls = class_map[class_name]
+#         instances.append(cls(**args))
+#     return instances
+
+import copy
+import logging
+from typing import Any, Dict
+from profit_analyzer.utils.class_loader import discover_classes, resolve_interpolations
+
+logger = logging.getLogger(__name__)
+
+def initialize_from_config(config: dict, package_root: str = "profit_analyzer") -> dict:
+    """
+    Recursively traverse the config and replace every mapping containing
+    a 'class' key with an instance of that class, initialized from its 'args'.
+
+    Returns a **copy of config** with the instantiated classes attached
+    in the same nested structure.
+
+    Example:
+        config['trades_data']['loader'] = FileLoader(...)
+    """
     class_map = discover_classes(package_root)
-    instances = []
-    for module in config.get("modules", []):
-        class_name = module["class"]
-        args = module.get("args", {})
-        args = resolve_interpolations(args, config)
-        if class_name not in class_map:
-            raise ImportError(f"Class {class_name} not found in discovered modules under {package_root}")
-        cls = class_map[class_name]
-        instances.append(cls(**args))
-    return instances
+
+    def _build(node: Any, parent_path: str = "") -> Any:
+        # Recursively handle dicts and lists
+        if isinstance(node, dict):
+            if "class" in node:
+                class_name = node["class"]
+                args = node.get("args", {})
+                args = resolve_interpolations(args, config)
+
+                if class_name not in class_map:
+                    raise ImportError(f"Class '{class_name}' not found under package '{package_root}'")
+
+                cls = class_map[class_name]
+                try:
+                    inst = cls(**args)
+                    logger.debug(f"Instantiated {class_name} at {parent_path or '<root>'} with args={args}")
+                    return inst
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to instantiate {class_name} at {parent_path or '<root>'}: {e}"
+                    ) from e
+            else:
+                # Recurse into dict
+                return {k: _build(v, f"{parent_path}.{k}" if parent_path else k) for k, v in node.items()}
+        elif isinstance(node, list):
+            return [_build(v, f"{parent_path}[]") for v in node]
+        else:
+            return node
+
+    config_copy = copy.deepcopy(config)
+    resolved = _build(config_copy)
+    return resolved

@@ -11,5 +11,5 @@ def test_initialize(tmp_path):
             {'class':'FileLoader','args':{'folder_path':'.','include_patterns':['*.md']}},
         ]
     }
-    instances = initialize_from_config(cfg, 'profit_analyzer')
-    assert instances[0].__class__.__name__ == 'FileLoader'
+    loaded_config = initialize_from_config(cfg, 'profit_analyzer')
+    assert loaded_config['modules'][0].__class__.__name__ == 'FileLoader'

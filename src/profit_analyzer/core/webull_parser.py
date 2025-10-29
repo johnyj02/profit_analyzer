@@ -87,3 +87,81 @@ class WebullParser:
         parsed = d[['datetime', 'date', 'symbol', 'qty', 'price', 'cash_flow']].dropna(subset=['datetime', 'price'])
         parsed = parsed.sort_values('datetime').reset_index(drop=True)
         return parsed
+
+class TransfersParser:
+    """
+    Parses brokerage transfer CSVs into a daily Series of EXTERNAL cash flows for MWR/XIRR.
+
+    Expected columns (case-insensitive, tolerant):
+      - transfer_type       e.g., 'Ach Incoming', 'ACH Incoming', 'Wire Outgoing', etc.
+      - transfer_date       e.g., '05/04/2021 16:07 EDT'
+      - transfer_status     e.g., 'Completed'
+      - transfer_amount     numeric (pos)
+
+    Sign convention (aligned with XIRR in ProfitCalculator):
+      - Deposit INTO portfolio: NEGATIVE cash flow (your money goes in)  -> e.g., 'Incoming'
+      - Withdrawal FROM portfolio: POSITIVE cash flow (money comes back) -> e.g., 'Outgoing'
+    """
+    def __init__(self, completed_only: bool = True):
+        self.completed_only = completed_only
+
+    @staticmethod
+    def _strip_tz(s: pd.Series) -> pd.Series:
+        return s.astype(str).str.replace(r"\s+[A-Z]{2,4}$", "", regex=True)
+
+    def parse(self, df: pd.DataFrame) -> pd.Series:
+        if df is None or df.empty:
+            return pd.Series(dtype=float)
+
+        d = df.copy()
+        # Normalize columns
+        lower = {c.lower().strip(): c for c in d.columns}
+        def getcol(name_alts):
+            for n in name_alts:
+                if n in lower:
+                    return lower[n]
+            return None
+
+        col_type   = getcol(["transfer_type", "type"])
+        col_date   = getcol(["transfer_date", "date", "time"])
+        col_status = getcol(["transfer_status", "status"])
+        col_amount = getcol(["transfer_amount", "amount", "value"])
+
+        missing = [n for n,c in {
+            "transfer_type": col_type,
+            "transfer_date": col_date,
+            "transfer_status": col_status,
+            "transfer_amount": col_amount
+        }.items() if c is None]
+        if missing:
+            # Return empty if columns are not present
+            return pd.Series(dtype=float)
+
+        # Filter completed if requested
+        if self.completed_only and col_status in d.columns:
+            d = d[d[col_status].astype(str).str.contains("complete", case=False, na=False)]
+
+        # Parse date (strip EDT/EST etc.)
+        dt = pd.to_datetime(self._strip_tz(d[col_date]), errors="coerce", utc=False)
+        d = d[~dt.isna()].copy()
+        d["date"] = pd.to_datetime(dt.dt.date)
+
+        # Amount
+        amt = pd.to_numeric(d[col_amount], errors="coerce").fillna(0.0)
+
+        # Map type to sign
+        t = d[col_type].astype(str).str.lower().str.strip()
+        # use keyword matching
+        is_incoming  = t.str.contains("incoming") | t.str.contains("deposit") | t.str.contains("inbound")
+        is_outgoing  = t.str.contains("outgoing") | t.str.contains("withdraw") | t.str.contains("outbound")
+
+        cash_flow = np.where(is_incoming, -amt, np.where(is_outgoing, +amt, np.nan))
+        # Drop unknown directions
+        d["cash_flow"] = cash_flow
+        d = d[~pd.isna(d["cash_flow"])].copy()
+
+        # Aggregate per day
+        s = d.groupby("date")["cash_flow"].sum().sort_index()
+        # Ensure DateTimeIndex (day resolution)
+        s.index = pd.to_datetime(s.index)
+        return s
